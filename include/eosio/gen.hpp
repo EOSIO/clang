@@ -43,6 +43,8 @@ template <typename Lambda>
 std::string translate_type( const clang::QualType& t, Lambda&& error_handler ) {
    std::map<std::string, std::string> translation_table =
    {
+      {"_Bool", "bool"},
+      
       {"unsigned __int128", "uint128"},
       {"__int128", "int128"},
       {"uint128_t", "uint128"},
