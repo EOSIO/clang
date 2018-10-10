@@ -46,8 +46,9 @@ DeclarationMatcher record_decl_matcher = cxxRecordDecl().bind("eosio_abis");
 TypeMatcher typedef_decl_matcher = type().bind("eosio_abis");
 
 class abigen : public generation_utils {
-   public:
-   abigen() : generation_utils([&](){throw abigen_ex;}) {}
+   static void _errorfn() { throw abigen_ex; }
+public:
+   abigen() : generation_utils(&abigen::_errorfn) {}
    void add_typedef( const clang::QualType& t ) {
       abi_typedef ret;
       ret.new_type_name = get_base_type_name( t );

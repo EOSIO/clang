@@ -16,7 +16,7 @@ struct generation_utils {
    generation_utils( void(*err)() ) : error_handler(err) {}
    
    inline bool is_template_specialization( const clang::QualType& type, const std::vector<std::string>& names ) {
-      auto check = [&](const clang::Type* pt) {
+      auto check = [&](const clang::Type* pt) -> bool {
         if (auto tst = llvm::dyn_cast<clang::TemplateSpecializationType>(pt)) {
          if (auto rt = llvm::dyn_cast<clang::RecordType>(tst->desugar()))
             if ( names.empty() ) {
@@ -27,6 +27,7 @@ struct generation_utils {
                      return true;
             }
          }
+         return false;
       };
       bool is_specialization = false;
       if (auto pt = llvm::dyn_cast<clang::ElaboratedType>(type.getTypePtr()))
@@ -41,7 +42,7 @@ struct generation_utils {
       auto ret = [&](const clang::Type* t) {
          if (auto tst = llvm::dyn_cast<clang::TemplateSpecializationType>(t))
             return tst->getArg(0).getAsType();
-         std::cout << "Internal error, wrong type of template specialization\n";
+         std::cout << "Internal error, \"" << t->getTypeClassName() << "\" is a wrong type of template specialization\n";
          error_handler();
       };
       if (auto pt = llvm::dyn_cast<clang::ElaboratedType>(type.getTypePtr()))
