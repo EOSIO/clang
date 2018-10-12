@@ -119,16 +119,31 @@ struct generation_utils {
       clang::QualType newType = type;
       std::string type_str = newType.getNonReferenceType().getAsString();
       int i = type_str.length()-1;
-      for (; i > 0; i--)
-         if (type_str[i] == ':' || type_str[i] == ' ') {
+      for (; i > 0; i--) {
+         if (type_str[i] == ':') {
             return type_str.substr(i+1); 
          }
+         if (type_str[i] == ' ') {
+            static const std::string valid_prefixs[] = {"long", "signed", "unsigned" };
+            bool valid = false;
+            for (auto &s : valid_prefixs) {
+               if (i >= s.length() && type_str.substr(i - s.length(), s.length()) == s &&
+                   (i - s.length() == 0 || type_str[i - s.length() - 1] == ' ')) {
+                  valid = true; 
+                  i -= s.length();
+                  break;
+               }
+            }
+            if (valid) continue;
+            return type_str.substr(i+1); 
+         }
+      }
 
       return type_str;
    }
 
    std::string _translate_type( const clang::QualType& t ) {
-      std::map<std::string, std::string> translation_table =
+      static std::map<std::string, std::string> translation_table =
       {
          {"unsigned __int128", "uint128"},
          {"__int128", "int128"},
@@ -153,6 +168,7 @@ struct generation_utils {
          {"int16_t", "int16"},
 
          {"unsigned char", "uint8"},
+         {"signed char", "int8"},
          {"char", "int8"},
          {"uint8_t", "uint8"},
          {"int8_t", "int8"},
