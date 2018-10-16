@@ -265,6 +265,14 @@ class abigen : public generation_utils {
                   return true;
             }
          }
+         for (auto t : _abi.tables) { // fix #6009 missing struct when adding table
+            if (t.type == as.name) 
+               return true;
+         }
+         for (auto t : ctables) { // fix #6009
+            if (t.type == as.name) 
+               return true;
+         }         
          return false;
       };
       for ( auto s : _abi.structs ) {
