@@ -8,6 +8,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/Builtins.h"
+#include "llvm/Support/FileSystem.h"
 #include "eosio/utils.hpp"
 #include "eosio/gen.hpp"
 #include "eosio/whereami/whereami.hpp"
@@ -43,9 +44,9 @@ struct abigen_exception : public std::exception {
 
 
 DeclarationMatcher function_decl_matcher = cxxMethodDecl().bind("eosio_abis");
-DeclarationMatcher record_decl_matcher = cxxRecordDecl().bind("eosio_abis");
-DeclarationMatcher typedef_decl_matcher = typedefDecl().bind("eosio_abis");
-auto               class_tmp_matcher    = classTemplateSpecializationDecl().bind("eosio_abis");
+DeclarationMatcher record_decl_matcher   = cxxRecordDecl().bind("eosio_abis");
+DeclarationMatcher typedef_decl_matcher  = typedefDecl().bind("eosio_abis");
+auto               class_tmp_matcher     = classTemplateSpecializationDecl().bind("eosio_abis");
 
 class abigen : public generation_utils {
    public:
@@ -55,6 +56,23 @@ class abigen : public generation_utils {
       ret.new_type_name = get_base_type_name( t );
       ret.type = get_type_alias( t );
       _abi.typedefs.insert(ret);
+   }
+   
+   std::string get_ricardian_contract( const std::string& fname ) {
+      for ( auto res : resource_dirs ) {
+         if ( llvm::sys::fs::exists( res + "/" + fname ) ) {
+            int FD;
+            llvm::sys::fs::openFileForRead(res+"/"+fname, FD);
+            llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> MemberBufferOrErr =
+            llvm::MemoryBuffer::getOpenFile(FD); // FileName, Status.getSize(), false);
+         /* TODO add error
+         if (!MemberBufferOrErr)
+         */
+
+
+         }
+      }
+      return "TEST";
    }
 
    void add_action( const clang::CXXRecordDecl* decl ) {
@@ -233,7 +251,11 @@ class abigen : public generation_utils {
       return o;
    }
 
-
+   ojson clause_to_json( const abi_ricardian_clause_pair& clause ) {
+      ojson o;
+      o["id"] = clause.id;
+      o["body"] = clause.body;
+   }
 
    ojson table_to_json( const abi_table& t ) {
       ojson o;
@@ -315,6 +337,9 @@ class abigen : public generation_utils {
       }
 
       o["ricardian_clauses"]  = ojson::array();
+      for ( auto rc : _abi.ricardian_clauses ) {
+         o["ricardian_clauses"].push_back(clause_to_json( rc ));
+      }
       o["abi_extensions"]     = ojson::array();
       return o;
    }
@@ -323,12 +348,25 @@ class abigen : public generation_utils {
 
    void set_contract_name( const std::string& cn ) { contract_name = cn; }
    std::string get_contract_name()const { return contract_name; }
+   void set_resource_dirs( const cl::list<std::string>& rd ) { 
+      llvm::SmallString<128> cwd;
+      auto has_real_path = llvm::sys::fs::real_path("./", cwd, true);
+      if (!has_real_path)
+         resource_dirs.push_back(cwd.str());
+      for ( auto res : rd ) {
+         llvm::SmallString<128> rp;
+         auto has_real_path = llvm::sys::fs::real_path(res, rp, true);
+         if (!has_real_path)
+            resource_dirs.push_back(rp.str());
+      }
+   }
 
    private: 
-      abi _abi;
+      abi                                   _abi;
       std::set<const clang::CXXRecordDecl*> tables;
       std::set<abi_table>                   ctables;
-      std::string contract_name;
+      std::string                           contract_name;
+      std::vector<std::string>              resource_dirs;
 };
 
 abigen& get_abigen_ref() {
@@ -342,6 +380,11 @@ class EosioMethodMatcher : public MatchFinder::MatchCallback {
          if (const clang::CXXMethodDecl* decl = res.Nodes.getNodeAs<clang::CXXMethodDecl>("eosio_abis")->getCanonicalDecl()) {
             abi abi;
             if (decl->isEosioAction() && abigen::is_eosio_contract(decl, get_abigen_ref().get_contract_name())) {
+               if (abigen::has_eosio_ricardian_contract(decl)) {
+                  std::cout << "RC " << abigen::get_eosio_ricardian_contract(decl) << '\n';
+                  auto rc = get_abigen_ref().get_ricardian_contract(abigen::get_eosio_ricardian_contract(decl));
+                  std::cout << "RC_ " << rc << "\n";
+               }
                get_abigen_ref().add_struct(decl);
                get_abigen_ref().add_action(decl);
                auto params = decl->parameters();
@@ -435,7 +478,13 @@ int main(int argc, const char **argv) {
     cl::desc("<ignored>"),
     cl::Hidden,
     cl::cat(cat));
-
+   cl::list<std::string> resource_paths(
+     "R",
+     cl::desc("Add a resource path for inclusion"),
+     cl::cat(cat),
+     cl::Prefix,
+     cl::ZeroOrMore);
+   
    std::vector<std::string> options;
    for (size_t i=0; i < argc; i++) {
       options.push_back(argv[i]);
@@ -456,6 +505,8 @@ int main(int argc, const char **argv) {
    options.push_back("-fno-rtti");
    options.push_back("-fno-exceptions");
    options.push_back("-I${Boost_INCLUDE_DIRS}");
+   options.push_back("-DBOOST_DISABLE_ASSERTS");
+   options.push_back("-DBOOST_EXCEPTION_DISABLE");
    options.push_back("-Wno-everything");
    options.push_back("-std=c++17");
    options.push_back(std::string("-I")+eosio::cdt::whereami::where()+"/../include/libcxx");
@@ -475,12 +526,14 @@ int main(int argc, const char **argv) {
 
    ClangTool tool( opts.getCompilations(), opts.getSourcePathList());
    get_abigen_ref().set_contract_name(contract_name);
+   get_abigen_ref().set_resource_dirs(resource_paths);
    EosioMethodMatcher eosio_method_matcher;
    EosioRecordMatcher eosio_record_matcher;
    MatchFinder finder;
    finder.addMatcher(function_decl_matcher, &eosio_method_matcher);
    finder.addMatcher(record_decl_matcher, &eosio_record_matcher);
    finder.addMatcher(class_tmp_matcher, &eosio_record_matcher);
+
 
    int tool_run = -1;
    try {

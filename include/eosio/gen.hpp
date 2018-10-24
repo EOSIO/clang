@@ -13,8 +13,10 @@ namespace eosio { namespace cdt {
 
 struct generation_utils {
    std::function<void()> error_handler;
+   std::vector<std::string> resource_paths;
   
-   generation_utils( std::function<void()> err ) : error_handler(err) {}
+   generation_utils( std::function<void()> err ) : error_handler(err), resource_paths({"./"}) {}
+   generation_utils( std::function<void()> err, const std::vector<std::string>& paths ) : error_handler(err), resource_paths(paths) {}
    
    static inline bool is_tuple( const clang::QualType& type ) {
    }
@@ -51,6 +53,26 @@ struct generation_utils {
       else
          t = type.getTypePtr();
       return get(t);
+   }
+   
+   static inline bool has_eosio_ricardian_contract( const clang::CXXMethodDecl* decl ) {
+      return decl->hasEosioRicardianContract();
+   }
+   static inline bool has_eosio_ricardian_contract( const clang::CXXRecordDecl* decl ) {
+      return decl->hasEosioRicardianContract();
+   }
+   static inline bool has_eosio_ricardian_clauses( const clang::CXXRecordDecl* decl ) {
+      return decl->hasEosioRicardianClauses();
+   }
+
+   static inline std::string get_eosio_ricardian_contract( const clang::CXXMethodDecl* decl ) {
+      return decl->getEosioRicardianContractAttr()->getName();
+   }
+   static inline std::string get_eosio_ricardian_contract( const clang::CXXRecordDecl* decl ) {
+      return decl->getEosioRicardianContractAttr()->getName();
+   }
+   static inline std::string get_eosio_ricardian_clauses( const clang::CXXRecordDecl* decl ) {
+      return decl->getEosioRicardianClausesAttr()->getName();
    }
 
    static inline bool is_eosio_contract( const clang::CXXMethodDecl* decl, const std::string& cn ) {
@@ -285,6 +307,9 @@ struct generation_utils {
       if (is_name_type(get_base_type_name(t)))
          return true;
       return get_base_type_name(t).compare(get_type_alias(t)) != 0;
+   }
+
+   std::string load_ricardian_contract( const std::string& fname ) {
    }
 };
 }} // ns eosio::cdt

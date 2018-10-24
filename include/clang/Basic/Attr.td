@@ -935,6 +935,20 @@ def EosioIgnore : InheritableAttr {
    let Documentation = [EosioIgnoreDocs];
 }
 
+def EosioRicardianContract : InheritableAttr {
+   let Spellings = [CXX11<"eosio", "rc">, GNU<"eosio_rc">];
+   let Args = [StringArgument<"name">];
+   let Subjects = SubjectList<[CXXRecord, CXXMethod]>;
+   let Documentation = [EosioRicardianContractDocs];
+}
+
+def EosioRicardianClauses : InheritableAttr {
+   let Spellings = [CXX11<"eosio", "clauses">, GNU<"eosio_clauses">];
+   let Args = [StringArgument<"name">];
+   let Subjects = SubjectList<[CXXRecord, CXXMethod]>;
+   let Documentation = [EosioRicardianClausesDocs];
+}
+
 def EosioContract : InheritableAttr {
    let Spellings = [CXX11<"eosio", "contract">, GNU<"eosio_contract">];
    let Args = [StringArgument<"name", 1>];

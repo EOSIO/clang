@@ -727,11 +727,15 @@ public:
   using base_class_const_iterator = const CXXBaseSpecifier *;
   bool isEosioContract() const { return hasAttr<EosioContractAttr>(); }
   bool isEosioAction() const { return hasAttr<EosioActionAttr>(); }
+  bool hasEosioRicardianClauses() const { return hasAttr<EosioRicardianClausesAttr>(); }
+  bool hasEosioRicardianContract() const { return hasAttr<EosioRicardianContractAttr>(); }
   bool isEosioTable() const { return hasAttr<EosioTableAttr>(); }
   bool isEosioIgnore() const { return hasAttr<EosioIgnoreAttr>(); }
   EosioActionAttr* getEosioActionAttr() const { return getAttr<EosioActionAttr>(); }
   EosioTableAttr*  getEosioTableAttr() const { return getAttr<EosioTableAttr>(); }
   EosioContractAttr*  getEosioContractAttr() const { return getAttr<EosioContractAttr>(); }
+  EosioRicardianContractAttr*  getEosioRicardianContractAttr() const { return getAttr<EosioRicardianContractAttr>(); }
+  EosioRicardianClausesAttr*  getEosioRicardianClausesAttr() const { return getAttr<EosioRicardianClausesAttr>(); }
 
 
   CXXRecordDecl *getCanonicalDecl() override {
@@ -2068,8 +2072,10 @@ public:
   bool isInstance() const { return !isStatic(); }
   bool isEosioAction() const { return hasAttr<EosioActionAttr>(); }
   bool isEosioContract() const { return hasAttr<EosioContractAttr>(); }
+  bool hasEosioRicardianContract() const { return hasAttr<EosioRicardianContractAttr>(); }
   EosioActionAttr* getEosioActionAttr() const { return getAttr<EosioActionAttr>(); }
   EosioContractAttr* getEosioContractAttr() const { return getAttr<EosioContractAttr>(); }
+  EosioRicardianContractAttr* getEosioRicardianContractAttr() const { return getAttr<EosioRicardianContractAttr>(); }
 
   /// Returns true if the given operator is implicitly static in a record
   /// context.
