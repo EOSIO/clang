@@ -936,14 +936,14 @@ def EosioIgnore : InheritableAttr {
 }
 
 def EosioRicardianContract : InheritableAttr {
-   let Spellings = [CXX11<"eosio", "rc">, GNU<"eosio_rc">];
+   let Spellings = [CXX11<"eosio", "ricardian_contract">, GNU<"eosio_ricardian_contract">];
    let Args = [StringArgument<"name">];
    let Subjects = SubjectList<[CXXRecord, CXXMethod]>;
    let Documentation = [EosioRicardianContractDocs];
 }
 
 def EosioRicardianClauses : InheritableAttr {
-   let Spellings = [CXX11<"eosio", "clauses">, GNU<"eosio_clauses">];
+   let Spellings = [CXX11<"eosio", "ricardian_clauses">, GNU<"eosio_ricardian_clauses">];
    let Args = [StringArgument<"name">];
    let Subjects = SubjectList<[CXXRecord, CXXMethod]>;
    let Documentation = [EosioRicardianClausesDocs];

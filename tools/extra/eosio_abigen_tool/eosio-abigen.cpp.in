@@ -58,26 +58,20 @@ class abigen : public generation_utils {
       _abi.typedefs.insert(ret);
    }
    
-   std::string get_ricardian_contract( const std::string& fname ) {
-      for ( auto res : resource_dirs ) {
-         if ( llvm::sys::fs::exists( res + "/" + fname ) ) {
-            int FD;
-            llvm::sys::fs::openFileForRead(res+"/"+fname, FD);
-            llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> MemberBufferOrErr =
-            llvm::MemoryBuffer::getOpenFile(FD); // FileName, Status.getSize(), false);
-         /* TODO add error
-         if (!MemberBufferOrErr)
-         */
-
-
-         }
-      }
-      return "TEST";
-   }
-
    void add_action( const clang::CXXRecordDecl* decl ) {
       abi_action ret;
       auto action_name = decl->getEosioActionAttr()->getName();
+
+      std::string rc = "";
+      if (has_eosio_ricardian_contract(decl)) {
+         rc = read_file(get_eosio_ricardian_contract(decl));
+      } else {
+         rc = get_ricardian_contract(decl);
+      }
+      if (rc.empty())
+         std::cout << "Warning, action <"+get_action_name(decl)+"> does not have a ricardian contract\n";
+
+      ret.ricardian_contract = rc;
 
       if (action_name.empty()) {
          try {
@@ -105,6 +99,18 @@ class abigen : public generation_utils {
       abi_action ret;
 
       auto action_name = decl->getEosioActionAttr()->getName();
+
+      std::string rc = "";
+      if (has_eosio_ricardian_contract(decl)) {
+         rc = read_file(get_eosio_ricardian_contract(decl));
+      } else {
+         rc = get_ricardian_contract(decl);
+      }
+      if (rc.empty())
+         std::cout << "Warning, action <"+get_action_name(decl)+"> does not have a ricardian contract\n";
+
+      ret.ricardian_contract = rc;
+
       if (action_name.empty()) {
          try {
             validate_name( decl->getNameAsString(), error_handler );
@@ -335,7 +341,7 @@ class abigen : public generation_utils {
       for ( auto t : set_of_tables ) {
          o["tables"].push_back(table_to_json( t ));
       }
-
+      read_files(".");
       o["ricardian_clauses"]  = ojson::array();
       for ( auto rc : _abi.ricardian_clauses ) {
          o["ricardian_clauses"].push_back(clause_to_json( rc ));
@@ -346,27 +352,11 @@ class abigen : public generation_utils {
 
    abi& get_abi_ref() { return _abi; }
 
-   void set_contract_name( const std::string& cn ) { contract_name = cn; }
-   std::string get_contract_name()const { return contract_name; }
-   void set_resource_dirs( const cl::list<std::string>& rd ) { 
-      llvm::SmallString<128> cwd;
-      auto has_real_path = llvm::sys::fs::real_path("./", cwd, true);
-      if (!has_real_path)
-         resource_dirs.push_back(cwd.str());
-      for ( auto res : rd ) {
-         llvm::SmallString<128> rp;
-         auto has_real_path = llvm::sys::fs::real_path(res, rp, true);
-         if (!has_real_path)
-            resource_dirs.push_back(rp.str());
-      }
-   }
 
    private: 
       abi                                   _abi;
       std::set<const clang::CXXRecordDecl*> tables;
       std::set<abi_table>                   ctables;
-      std::string                           contract_name;
-      std::vector<std::string>              resource_dirs;
 };
 
 abigen& get_abigen_ref() {
@@ -380,11 +370,6 @@ class EosioMethodMatcher : public MatchFinder::MatchCallback {
          if (const clang::CXXMethodDecl* decl = res.Nodes.getNodeAs<clang::CXXMethodDecl>("eosio_abis")->getCanonicalDecl()) {
             abi abi;
             if (decl->isEosioAction() && abigen::is_eosio_contract(decl, get_abigen_ref().get_contract_name())) {
-               if (abigen::has_eosio_ricardian_contract(decl)) {
-                  std::cout << "RC " << abigen::get_eosio_ricardian_contract(decl) << '\n';
-                  auto rc = get_abigen_ref().get_ricardian_contract(abigen::get_eosio_ricardian_contract(decl));
-                  std::cout << "RC_ " << rc << "\n";
-               }
                get_abigen_ref().add_struct(decl);
                get_abigen_ref().add_action(decl);
                auto params = decl->parameters();

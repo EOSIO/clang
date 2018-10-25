@@ -3,6 +3,8 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Tooling.h"
 #include "llvm/Support/raw_ostream.h"
 #include <functional>
 #include <vector>
@@ -13,10 +15,12 @@ namespace eosio { namespace cdt {
 
 struct generation_utils {
    std::function<void()> error_handler;
-   std::vector<std::string> resource_paths;
+   std::vector<std::string> resource_dirs;
+   std::string contract_name;
+
   
-   generation_utils( std::function<void()> err ) : error_handler(err), resource_paths({"./"}) {}
-   generation_utils( std::function<void()> err, const std::vector<std::string>& paths ) : error_handler(err), resource_paths(paths) {}
+   generation_utils( std::function<void()> err ) : error_handler(err), resource_dirs({"./"}) {}
+   generation_utils( std::function<void()> err, const std::vector<std::string>& paths ) : error_handler(err), resource_dirs(paths) {}
    
    static inline bool is_tuple( const clang::QualType& type ) {
    }
@@ -55,6 +59,21 @@ struct generation_utils {
       return get(t);
    }
    
+   inline void set_contract_name( const std::string& cn ) { contract_name = cn; }
+   inline std::string get_contract_name()const { return contract_name; }
+   inline void set_resource_dirs( const llvm::cl::list<std::string>& rd ) { 
+      llvm::SmallString<128> cwd;
+      auto has_real_path = llvm::sys::fs::real_path("./", cwd, true);
+      if (!has_real_path)
+         resource_dirs.push_back(cwd.str());
+      for ( auto res : rd ) {
+         llvm::SmallString<128> rp;
+         auto has_real_path = llvm::sys::fs::real_path(res, rp, true);
+         if (!has_real_path)
+            resource_dirs.push_back(rp.str());
+      }
+   }
+  
    static inline bool has_eosio_ricardian_contract( const clang::CXXMethodDecl* decl ) {
       return decl->hasEosioRicardianContract();
    }
@@ -73,6 +92,63 @@ struct generation_utils {
    }
    static inline std::string get_eosio_ricardian_clauses( const clang::CXXRecordDecl* decl ) {
       return decl->getEosioRicardianClausesAttr()->getName();
+   }
+   
+   static inline std::string get_action_name( const clang::CXXMethodDecl* decl ) {
+      std::string action_name = "";
+      if (auto tmp = decl->getEosioActionAttr()->getName(); !tmp.empty())
+         return tmp;
+      return decl->getNameAsString();
+   }
+   static inline std::string get_action_name( const clang::CXXRecordDecl* decl ) {
+      std::string action_name = "";
+      if (auto tmp = decl->getEosioActionAttr()->getName().str(); !tmp.empty())
+         return tmp;
+      return decl->getName();
+   }
+   inline std::string get_rc_filename( const std::string& action ) {
+      return get_contract_name()+".rc."+action+".md";
+   }
+   inline std::string get_clauses_filename() {
+      return get_contract_name()+".clauses.md";
+   }
+
+   inline std::string read_file( const std::string& fname ) {
+      for ( auto res : resource_dirs ) {
+         if ( llvm::sys::fs::exists( res + "/" + fname ) ) {
+            int fd;
+            llvm::sys::fs::file_status stat;
+            llvm::sys::fs::openFileForRead(res+"/"+fname, fd);
+            llvm::sys::fs::status(fd, stat);
+            llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> mb =
+               llvm::MemoryBuffer::getOpenFile(fd, fname, stat.getSize());
+            if (mb)
+               return mb.get()->getBuffer().str();
+         }
+      }
+      return "";
+   }
+
+   inline std::vector<std::string> read_files( const std::string& dir ) {
+      for ( auto res : resource_dirs ) {
+         if (llvm::sys::fs::exists(res+"/"+dir)) {
+            llvm::Twine path(res+"/"+dir);
+            std::error_code ec;
+            llvm::sys::fs::directory_iterator di(path, ec);
+            std::cout << (*di).path() << "\n";
+         }
+      }
+      return {};
+   }
+
+   inline std::string get_ricardian_contract( const clang::CXXMethodDecl* decl ) {
+      return read_file(get_rc_filename(get_action_name(decl)));
+   }
+   inline std::string get_ricardian_contract( const clang::CXXRecordDecl* decl ) {
+      return read_file(get_rc_filename(get_action_name(decl)));
+   }
+   inline std::vector<std::string> get_ricardian_clauses( const clang::CXXRecordDecl* decl ) {
+      return {};
    }
 
    static inline bool is_eosio_contract( const clang::CXXMethodDecl* decl, const std::string& cn ) {
@@ -307,9 +383,6 @@ struct generation_utils {
       if (is_name_type(get_base_type_name(t)))
          return true;
       return get_base_type_name(t).compare(get_type_alias(t)) != 0;
-   }
-
-   std::string load_ricardian_contract( const std::string& fname ) {
    }
 };
 }} // ns eosio::cdt
