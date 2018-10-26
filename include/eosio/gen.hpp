@@ -9,6 +9,8 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <utility>
+#include <regex>
 #include "eosio/utils.hpp"
 
 namespace eosio { namespace cdt {
@@ -17,7 +19,6 @@ struct generation_utils {
    std::function<void()> error_handler;
    std::vector<std::string> resource_dirs;
    std::string contract_name;
-
   
    generation_utils( std::function<void()> err ) : error_handler(err), resource_dirs({"./"}) {}
    generation_utils( std::function<void()> err, const std::vector<std::string>& paths ) : error_handler(err), resource_dirs(paths) {}
@@ -58,7 +59,8 @@ struct generation_utils {
          t = type.getTypePtr();
       return get(t);
    }
-   
+    
+
    inline void set_contract_name( const std::string& cn ) { contract_name = cn; }
    inline std::string get_contract_name()const { return contract_name; }
    inline void set_resource_dirs( const llvm::cl::list<std::string>& rd ) { 
@@ -106,11 +108,14 @@ struct generation_utils {
          return tmp;
       return decl->getName();
    }
-   inline std::string get_rc_filename( const std::string& action ) {
-      return get_contract_name()+".rc."+action+".md";
+   inline std::string get_rc_filename( const std::string& contract, const std::string& action ) {
+      return contract+".rc."+action+".md";
+   }
+   inline std::string get_clauses_filename( const std::string& contract ) {
+      return contract+".clauses.md";
    }
    inline std::string get_clauses_filename() {
-      return get_contract_name()+".clauses.md";
+      return contract_name+".clauses.md";
    }
 
    inline std::string read_file( const std::string& fname ) {
@@ -126,30 +131,55 @@ struct generation_utils {
                return mb.get()->getBuffer().str();
          }
       }
-      return "";
-   }
-
-   inline std::vector<std::string> read_files( const std::string& dir ) {
-      for ( auto res : resource_dirs ) {
-         if (llvm::sys::fs::exists(res+"/"+dir)) {
-            llvm::Twine path(res+"/"+dir);
-            std::error_code ec;
-            llvm::sys::fs::directory_iterator di(path, ec);
-            std::cout << (*di).path() << "\n";
-         }
-      }
       return {};
    }
 
    inline std::string get_ricardian_contract( const clang::CXXMethodDecl* decl ) {
-      return read_file(get_rc_filename(get_action_name(decl)));
+      return read_file(get_rc_filename(contract_name, get_action_name(decl)));
    }
    inline std::string get_ricardian_contract( const clang::CXXRecordDecl* decl ) {
-      return read_file(get_rc_filename(get_action_name(decl)));
+      return read_file(get_rc_filename(contract_name, get_action_name(decl)));
    }
-   inline std::vector<std::string> get_ricardian_clauses( const clang::CXXRecordDecl* decl ) {
-      return {};
+   inline std::string get_ricardian_clauses() {
+      return read_file(get_clauses_filename(contract_name));
    }
+   inline std::string get_clause_decl( std::string line ) {
+      std::smatch match;
+      if ( std::regex_match( line, match, std::regex("([ ]*<h1[ ]+class[ ]*=[ ]*\"clause\"[ ]*>)(.*)(<[ ]*\/h1[ ]*)>", std::regex_constants::ECMAScript) ) ) {
+         return match[2].str();
+      }
+      return "";
+   }
+
+   inline std::vector<std::pair<std::string, std::string>> parse_clauses( const std::string& clauses ) {
+      std::vector<std::pair<std::string, std::string>> clause_pairs;
+      std::istringstream ss;
+      ss.str(clauses);
+
+      std::string id;
+      std::string body;
+      std::string line;
+      
+      std::getline(ss, line);
+      auto _id = get_clause_decl(line);
+      if (_id.empty()) {
+         std::cout << "Error, invalid ricardian clause, must start with a clause id\n";
+         error_handler();
+      }
+      id = _id; 
+      for (; std::getline(ss, line);) {
+         auto _id = get_clause_decl(line); 
+         if ( !_id.empty() ) {
+            clause_pairs.emplace_back(id, body);
+            body = "";
+            id = _id;
+         } else {
+            body += line;
+         }
+      }
+      clause_pairs.emplace_back(id, body);
+      return clause_pairs;
+   }  
 
    static inline bool is_eosio_contract( const clang::CXXMethodDecl* decl, const std::string& cn ) {
       std::string name = "";

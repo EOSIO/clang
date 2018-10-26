@@ -217,6 +217,12 @@ class abigen : public generation_utils {
       t.name = name_to_string(name);
       _abi.tables.insert(t);
    }
+   
+   void add_clauses( const std::vector<std::pair<std::string, std::string>>& clauses ) {
+      for ( auto clp : clauses ) {
+         _abi.ricardian_clauses.push_back({std::get<0>(clp), std::get<1>(clp)});
+      }
+   }
 
    std::string generate_json_comment() {
       std::stringstream ss;
@@ -261,6 +267,7 @@ class abigen : public generation_utils {
       ojson o;
       o["id"] = clause.id;
       o["body"] = clause.body;
+      return o;
    }
 
    ojson table_to_json( const abi_table& t ) {
@@ -341,7 +348,6 @@ class abigen : public generation_utils {
       for ( auto t : set_of_tables ) {
          o["tables"].push_back(table_to_json( t ));
       }
-      read_files(".");
       o["ricardian_clauses"]  = ojson::array();
       for ( auto rc : _abi.ricardian_clauses ) {
          o["ricardian_clauses"].push_back(clause_to_json( rc ));
@@ -395,8 +401,16 @@ class EosioMethodMatcher : public MatchFinder::MatchCallback {
 
 class EosioRecordMatcher : public MatchFinder::MatchCallback {
    public:
+      bool has_added_clauses = false;
       virtual void run( const MatchFinder::MatchResult& res ) {
          if (const clang::CXXRecordDecl* decl = res.Nodes.getNodeAs<clang::CXXRecordDecl>("eosio_abis")) {
+            if (abigen::has_eosio_ricardian_clauses(decl)) {
+               get_abigen_ref().add_clauses(get_abigen_ref().parse_clauses(get_abigen_ref().read_file(abigen::get_eosio_ricardian_clauses(decl))));
+               has_added_clauses = true;
+            } else if (!has_added_clauses) {
+               get_abigen_ref().add_clauses(get_abigen_ref().parse_clauses(get_abigen_ref().read_file(get_abigen_ref().get_clauses_filename())));
+               has_added_clauses = true;
+            }
             if (decl->isEosioAction() && abigen::is_eosio_contract(decl, get_abigen_ref().get_contract_name())) {
                get_abigen_ref().add_struct(decl);
                get_abigen_ref().add_action(decl);
