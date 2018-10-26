@@ -131,6 +131,36 @@ class abigen : public generation_utils {
       _abi.actions.insert(ret);
    }
 
+   void add_map(const clang::QualType& type) {
+      for (int i = 0; i < 2; ++i) {
+         clang::QualType ftype = get_template_argument(type, i);
+         std::string ty = translate_type(ftype);
+         if ( !(is_builtin_type(ty)) ) {
+            if ( is_aliasing(ftype))
+               add_typedef(ftype);
+            if ( is_template_specialization(ftype, {"vector", "set", "optional"})) {
+               if ( !(is_builtin_type(get_template_argument(ftype))) ) {
+                  if ( is_aliasing(get_template_argument(ftype)))
+                     add_typedef(get_template_argument(ftype));
+                  if ( get_template_argument(ftype)->isRecordType() )
+                     add_struct(get_template_argument(ftype).getTypePtr()->getAsCXXRecordDecl());
+               }
+            }
+            else if ( is_template_specialization(ftype, {"map"})) {
+               add_map(ftype);
+            }
+            else if ( ftype->isRecordType()) 
+               add_struct(ftype.getTypePtr()->getAsCXXRecordDecl());
+         }
+      }
+      abi_struct kv;
+      std::string name = get_type(type);
+      kv.name = name.substr(0, name.length() - 2);
+      kv.fields.push_back( {"key", translate_type(get_template_argument(type))} );
+      kv.fields.push_back( {"value", translate_type(get_template_argument(type, 1))} );   
+      _abi.structs.insert(kv);
+   }
+
    void add_struct( const clang::CXXRecordDecl* decl ) {
       abi_struct ret;
       if ( decl->getNumBases() > 1 ) {
@@ -152,10 +182,19 @@ class abigen : public generation_utils {
             _abi.structs.insert(ext);
          }
          else {
+            if ( is_aliasing(field->getType()))
+               add_typedef(field->getType());
             ret.fields.push_back({field->getName().str(), get_type(field->getType())});
-            if ( is_template_specialization(field->getType(), {"vector", "optional"})) {
-               if ( get_template_argument(field->getType())->isRecordType() )
-                     add_struct(get_template_argument(field->getType()).getTypePtr()->getAsCXXRecordDecl());
+            if ( is_template_specialization(field->getType(), {"vector", "set", "optional"})) {
+               if (!is_builtin_type(get_template_argument(field->getType()))) {
+                  if ( get_template_argument(field->getType())->isRecordType() )
+                        add_struct(get_template_argument(field->getType()).getTypePtr()->getAsCXXRecordDecl());
+                  if ( is_aliasing(get_template_argument(field->getType())))
+                     add_typedef(get_template_argument(field->getType()));
+               }
+            }
+            else if ( is_template_specialization(field->getType(), {"map"})) {
+               add_map(field->getType());
             }
          }
       }
@@ -175,12 +214,19 @@ class abigen : public generation_utils {
          if (!is_builtin_type( param_type)) {
             if (is_aliasing(param_type))
                add_typedef(param_type);
-            if (param_type.getTypePtr()->isRecordType())
-               add_struct( param_type.getTypePtr()->getAsCXXRecordDecl() );
-            else if (is_template_specialization(param_type, {"vector", "optional"})) {
-               if ( get_template_argument(param_type)->isRecordType())
-                  add_struct(get_template_argument(param_type).getTypePtr()->getAsCXXRecordDecl());
+            else if (is_template_specialization(param_type, {"vector", "set", "optional"})) {
+               if (!is_builtin_type(get_template_argument(param_type))) {
+                  if ( get_template_argument(param_type)->isRecordType())
+                     add_struct(get_template_argument(param_type).getTypePtr()->getAsCXXRecordDecl());
+                  if ( is_aliasing(get_template_argument(param_type)))
+                     add_typedef(get_template_argument(param_type));
+               }
             }
+            else if ( is_template_specialization(param_type, {"map"})) {
+               add_map(param_type);
+            }
+            else if (param_type.getTypePtr()->isRecordType())
+               add_struct( param_type.getTypePtr()->getAsCXXRecordDecl() );
          }
          new_struct.fields.push_back({param->getNameAsString(), get_type(param_type)});
       }
@@ -387,7 +433,7 @@ class EosioMethodMatcher : public MatchFinder::MatchCallback {
                   if (param->getType().getTypePtr()->isRecordType() && !get_abigen_ref().is_builtin_type(param->getType())) {
                      get_abigen_ref().add_struct(param->getType().getTypePtr()->getAsCXXRecordDecl());
                   }
-                  if ( get_abigen_ref().is_template_specialization(param->getType(), {"vector", "optional"})) {
+                  if ( get_abigen_ref().is_template_specialization(param->getType(), {"vector", "set", "optional"})) {
                      if ( get_abigen_ref().get_template_argument(param->getType())->isRecordType() )
                         get_abigen_ref().add_struct(get_abigen_ref().get_template_argument(param->getType()).getTypePtr()->getAsCXXRecordDecl());
                   }
@@ -420,9 +466,17 @@ class EosioRecordMatcher : public MatchFinder::MatchCallback {
                         get_abigen_ref().add_typedef(field->getType());
                      if (field->getType()->isRecordType())
                         get_abigen_ref().add_struct(field->getType()->getAsCXXRecordDecl());
-                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"vector", "optional"})) {
-                        if ( get_abigen_ref().get_template_argument(field->getType())->isRecordType() )
-                           get_abigen_ref().add_struct(get_abigen_ref().get_template_argument(field->getType()).getTypePtr()->getAsCXXRecordDecl());
+                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"vector", "set", "optional"})) {
+                        auto inner_type = get_abigen_ref().get_template_argument(field->getType());
+                        if (!get_abigen_ref().is_builtin_type(inner_type)) {
+                           if (get_abigen_ref().is_aliasing(inner_type))
+                              get_abigen_ref().add_typedef(inner_type);
+                           if ( inner_type->isRecordType() )
+                              get_abigen_ref().add_struct(inner_type.getTypePtr()->getAsCXXRecordDecl());
+                        }
+                     }
+                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"map"})) {
+                        get_abigen_ref().add_map(field->getType());
                      }
                   }
                }
@@ -436,9 +490,17 @@ class EosioRecordMatcher : public MatchFinder::MatchCallback {
                         get_abigen_ref().add_typedef(field->getType());
                      if (field->getType()->isRecordType())
                         get_abigen_ref().add_struct(field->getType()->getAsCXXRecordDecl());
-                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"vector", "optional"})) {
-                        if ( get_abigen_ref().get_template_argument(field->getType())->isRecordType() )
-                           get_abigen_ref().add_struct(get_abigen_ref().get_template_argument(field->getType()).getTypePtr()->getAsCXXRecordDecl());
+                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"vector", "set", "optional"})) {
+                        auto inner_type = get_abigen_ref().get_template_argument(field->getType());
+                        if (!get_abigen_ref().is_builtin_type(inner_type)) {
+                           if (get_abigen_ref().is_aliasing(inner_type))
+                              get_abigen_ref().add_typedef(inner_type);
+                           if ( inner_type->isRecordType() )
+                              get_abigen_ref().add_struct(inner_type.getTypePtr()->getAsCXXRecordDecl());
+                        }
+                     }
+                     if ( get_abigen_ref().is_template_specialization(field->getType(), {"map"})) {
+                        get_abigen_ref().add_map(field->getType());
                      }
                   }
             }
