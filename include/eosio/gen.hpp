@@ -159,7 +159,12 @@ struct generation_utils {
       std::string id;
       std::string body;
       std::string line;
-      
+     
+     if (clauses.empty()) {
+         std::cout << "Warning, empty ricardian clause file\n";
+         return clause_pairs;
+     }
+
       std::getline(ss, line);
       auto _id = get_clause_decl(line);
       if (_id.empty()) {
