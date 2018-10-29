@@ -292,6 +292,11 @@ struct generation_utils {
    inline std::string get_type_alias( const clang::QualType& t ) {
       if (is_name_type(get_base_type_name(t)))
          return "name";
+      if (auto tdt = llvm::dyn_cast<clang::TypedefType>(t)) {
+         clang::TypedefNameDecl *decl = tdt->getDecl();
+         if (decl)
+            return get_type(decl->getUnderlyingType());
+      }
       return get_type(clang::QualType(t).getCanonicalType());
    }
 

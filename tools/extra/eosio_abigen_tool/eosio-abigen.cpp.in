@@ -50,11 +50,45 @@ auto               class_tmp_matcher    = classTemplateSpecializationDecl().bind
 class abigen : public generation_utils {
    public:
    abigen() : generation_utils([&](){throw abigen_ex;}) {}
+
+   clang::QualType getUnderlyingType(const clang::QualType& t) {
+      auto tdt = llvm::dyn_cast<clang::TypedefType>(t);
+      if (tdt) {
+         clang::TypedefNameDecl *decl = tdt->getDecl();
+         return decl->getUnderlyingType();
+      }
+      return clang::QualType();
+   }
+
    void add_typedef( const clang::QualType& t ) {
+
+      auto utype = getUnderlyingType(t);
+      if (utype.isNull() || utype->isPointerType()) 
+         return;
+
       abi_typedef ret;
       ret.new_type_name = get_base_type_name( t );
       ret.type = get_type_alias( t );
+      if (ret.type.find("<") != std::string::npos) return; // avoid adding typedef from interal std containers
       _abi.typedefs.insert(ret);
+
+      if (is_aliasing(utype)) {
+         add_typedef(utype); // nested alias
+      }
+      else if ( is_template_specialization(utype, {"vector", "set", "optional"})) {
+         if ( !(is_builtin_type(get_template_argument(utype))) ) {
+            if ( is_aliasing(get_template_argument(utype)))
+               add_typedef(get_template_argument(utype));
+            if ( get_template_argument(utype)->isRecordType() )
+               add_struct(get_template_argument(utype).getTypePtr()->getAsCXXRecordDecl());
+         }
+      }
+      else if ( is_template_specialization(utype, {"map"})) {
+         add_map(utype);
+      }
+      else if (is_cxx_record(utype)) {
+         add_struct(utype.getTypePtr()->getAsCXXRecordDecl());
+      }
    }
 
    void add_action( const clang::CXXRecordDecl* decl ) {
@@ -338,6 +372,10 @@ class abigen : public generation_utils {
          }
          for( auto t : set_of_tables ) {
             if (as.name == t.type)
+               return true;
+         }
+         for (auto t : _abi.typedefs) {
+            if (as.name == remove_suffix(t.type))
                return true;
          }
          return false;
