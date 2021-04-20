@@ -1043,6 +1043,13 @@ The ``eosio::table`` attribute marks a record as being an eosio table.
   }];
 }
 
+def EosioStructureDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+The ``eosio::structure`` attribute marks a struct as being an eosio structure.
+  }];
+}
+
 def NoSplitStackDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
